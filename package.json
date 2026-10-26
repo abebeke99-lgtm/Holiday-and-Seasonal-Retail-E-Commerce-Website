@@ -7,12 +7,29 @@
     "dev": "nuxt dev",
     "generate": "nuxt generate",
     "preview": "nuxt preview",
-    "postinstall": "nuxt prepare"
+    "postinstall": "nuxt prepare",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate deploy",
+    "db:migrate:dev": "prisma migrate dev",
+    "db:seed": "tsx --env-file=.env prisma/seed.ts",
+    "test": "vitest run"
   },
   "dependencies": {
-    "mongoose": "^9.11.2",
+    "@prisma/client": "^6.19.0",
+    "bcryptjs": "^3.0.2",
     "nuxt": "^4.6.2",
+    "ofetch": "^1.5.1",
     "vue": "^3.5.43",
-    "vue-router": "^5.4.0"
+    "vue-router": "^5.4.0",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "dotenv": "^16.6.1",
+    "prisma": "^6.19.0",
+    "tsx": "^4.20.6",
+    "typescript": "~5.9.3",
+    "vitest": "^4.0.8",
+    "vue-tsc": "^3.3.13"
   }
 }

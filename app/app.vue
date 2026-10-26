@@ -1,6 +1,8 @@
+<script setup lang="ts">
+const route = useRoute()
+</script>
+
 <template>
-  <div>
-    <NuxtRouteAnnouncer />
-    <NuxtWelcome />
-  </div>
+  <SiteNavigation v-if="route.path !== '/'" />
+  <NuxtPage />
 </template>

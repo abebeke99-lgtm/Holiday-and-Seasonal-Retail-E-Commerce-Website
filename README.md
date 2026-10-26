@@ -1,75 +1,94 @@
-# Nuxt Minimal Starter
+# SeasonMart
 
-Look at the [Nuxt documentation](https://nuxt.com/docs/getting-started/introduction) to learn more.
+SeasonMart is a Nuxt 4/Vue 3 storefront with Nitro API routes and a MySQL 8 persistence layer using Prisma. The starter project contained only the Nuxt welcome page; the storefront and server features have been built on that starter without MongoDB.
 
-## Setup
+## Local setup (Windows/XAMPP)
 
-Make sure to install dependencies:
+Use Node.js 24.15 or later in the Node 24 line (Nuxt's declared engine range), along with npm.
 
-```bash
-# npm
-npm install
+1. Start XAMPP Control Panel and click **Start** beside MySQL. Nuxt runs independently; Apache is not required.
 
-# pnpm
-pnpm install
+   ```powershell
+   Start-Process C:\xamppbe\xampp-control.exe
+   Test-NetConnection 127.0.0.1 -Port 3306
+   ```
 
-# yarn
-yarn install
+2. Create the database only if it does not exist, using the XAMPP MySQL client. `-p` prompts locally; it does not put a password in shell history:
 
-# bun
-bun install
-```
+   ```sql
+   CREATE DATABASE IF NOT EXISTS seasonmart CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+   CREATE USER 'seasonmart_user'@'127.0.0.1' IDENTIFIED BY 'choose-a-local-password';
+   GRANT ALL PRIVILEGES ON seasonmart.* TO 'seasonmart_user'@'127.0.0.1';
+   ```
 
-## Development Server
+   Run the SQL from phpMyAdmin, or:
 
-Start the development server on `http://localhost:3000`:
+   ```powershell
+   & C:\xamppbe\mysql\bin\mysql.exe -u root -p -h 127.0.0.1 -P 3306 -e "CREATE DATABASE IF NOT EXISTS seasonmart CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+   ```
 
-```bash
-# npm
-npm run dev
+   Use a strong local application-user password in your own SQL client; do not commit it. If the application user already exists, do not re-run `CREATE USER`; grant its access only if needed.
 
-# pnpm
-pnpm dev
+3. Create `.env` only if absent, then edit it locally to set `DATABASE_URL` and `NUXT_SESSION_PASSWORD`. The command does not overwrite an existing `.env`:
 
-# yarn
-yarn dev
+   ```powershell
+   Set-Location C:\xamppbe\htdocs\Holiday-and-Seasonal-Retail-E-Commerce-Website
+   if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+   notepad .env
+   ```
 
-# bun
-bun run dev
-```
+   Generate a session secret locally and put it in `.env`; this does not print the secret:
 
-## Production
+   ```powershell
+   $bytes = [byte[]]::new(48)
+   [System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+   $sessionSecret = [Convert]::ToBase64String($bytes)
+   Set-Clipboard $sessionSecret
+   ```
 
-Build the application for production:
+   Paste the clipboard value into the local, ignored `.env` as `NUXT_SESSION_PASSWORD`. Set `DATABASE_URL` to `mysql://seasonmart_user:YOUR_PASSWORD@127.0.0.1:3306/seasonmart`; URL-encode special characters in the password.
 
-```bash
-# npm
-npm run build
+4. Install packages and apply the version-controlled migration:
 
-# pnpm
-pnpm build
+   ```powershell
+   npm ci
+   npm run db:generate
+   npx prisma validate
+   npx prisma migrate status
+   npm run db:migrate
+   ```
 
-# yarn
-yarn build
+   `db:migrate` uses `prisma migrate deploy`; it does not drop/recreate the database. Review the migration status and back up any existing database before applying migrations. Do not use `db:migrate:dev` against production or a database containing data you cannot restore.
 
-# bun
-bun run build
-```
+5. Optionally seed the built-in seasonal categories and create/promote an administrator. Set `SEED_ADMIN_EMAIL` and `SEED_ADMIN_PASSWORD` in the ignored `.env` (minimum 12 characters) before running:
 
-Locally preview production build:
+   ```powershell
+   npm run db:seed
+   ```
 
-```bash
-# npm
-npm run preview
+   Seeded categories use idempotent upserts. Admin creation is skipped unless both variables are set. The password is hashed with bcrypt; no default credentials are provided.
 
-# pnpm
-pnpm preview
+6. Run tests and start Nuxt:
 
-# yarn
-yarn preview
+   ```powershell
+   npm test
+   npm run dev
+   ```
 
-# bun
-bun run preview
-```
+   Open `http://localhost:3000`. `GET /api/health` checks MySQL and returns HTTP 503 when it is unavailable.
 
-Check out the [deployment documentation](https://nuxt.com/docs/getting-started/deployment) for more information.
+## Implemented features
+
+- Relational MySQL schema and initial Prisma migration for accounts, roles, catalog, categories, collections, campaigns, carts, wishlists, orders, inventory, addresses, payments, and audit logs.
+- Password-hashed customer registration, login/logout, database-checked role authorization, and encrypted HTTP-only SameSite session cookies.
+- Searchable/paginated products, category and collection browsing, current campaign display, persistent customer cart/wishlist and order history.
+- Provider-neutral checkout: totals are calculated from database decimal prices; stock is atomically decremented within a transaction, movements are recorded, and repeated idempotency keys do not create duplicate orders. The app does not collect card details or claim to charge payment.
+- Admin catalog/category/collection/campaign maintenance, inventory adjustments, orders, and audit log endpoints and dashboard.
+
+## Configuration and limitations
+
+- `.env.example` contains placeholders only. `.env`, database dumps, and private keys are ignored.
+- New users are customers. Only an operator with database access or the opt-in seed flow can grant administrator role.
+- This repository began as a minimal Nuxt starter, so it had no existing products, business rules, database records, or MongoDB data to migrate. No sample products or mock runtime data are bundled.
+- Address capture/shipping integration, payment-provider integration, refunds, order status changes, email delivery, and automated MongoDB export/import are not implemented. Checkout creates a pending-payment order only.
+- Apply migrations and test against a dedicated local/test MySQL database. No migration or seed was run against a live database as part of this work.
