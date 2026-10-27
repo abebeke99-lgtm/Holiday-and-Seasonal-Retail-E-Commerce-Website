@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import bcrypt from 'bcryptjs'
-import { registrationSchema } from '../server/utils/schemas'
+import { adminUserCreateSchema, adminUserUpdateSchema, registrationSchema } from '../server/utils/schemas'
+import { wouldRemoveLastActiveAdmin } from '../server/utils/admin-user-policy'
 import { calculateSubtotal } from '../server/utils/pricing'
 import { Prisma } from '@prisma/client'
 
@@ -38,6 +39,32 @@ describe('password storage', () => {
     expect(hash).not.toBe(password)
     expect(await bcrypt.compare(password, hash)).toBe(true)
     expect(await bcrypt.compare('incorrect-password', hash)).toBe(false)
+  })
+})
+
+describe('administrator user management policies', () => {
+  it('normalizes user email and restricts assignable roles to the supported set', () => {
+    expect(adminUserCreateSchema.parse({
+      name: '  Morgan  ',
+      email: 'MORGAN@example.com',
+      password: 'a-long-password-123',
+      role: 'STORE_MANAGER'
+    })).toMatchObject({ name: 'Morgan', email: 'morgan@example.com', role: 'STORE_MANAGER' })
+    expect(adminUserCreateSchema.safeParse({
+      name: 'Morgan',
+      email: 'morgan@example.com',
+      password: 'a-long-password-123',
+      role: 'SUPER_ADMIN'
+    }).success).toBe(false)
+    expect(adminUserUpdateSchema.safeParse({}).success).toBe(false)
+  })
+
+  it('prevents demotion or deactivation of the last active administrator only', () => {
+    const admin = { id: 'admin-1', role: 'ADMIN' as const, active: true }
+    expect(wouldRemoveLastActiveAdmin(admin, { role: 'CUSTOMER' }, 1)).toBe(true)
+    expect(wouldRemoveLastActiveAdmin(admin, { active: false }, 1)).toBe(true)
+    expect(wouldRemoveLastActiveAdmin(admin, { role: 'CUSTOMER' }, 2)).toBe(false)
+    expect(wouldRemoveLastActiveAdmin({ ...admin, role: 'CUSTOMER' }, { active: false }, 1)).toBe(false)
   })
 })
 

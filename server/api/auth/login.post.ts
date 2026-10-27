@@ -12,7 +12,7 @@ const credentials = z.object({
 export default defineEventHandler(async (event) => {
   const body = await validatedBody(event, credentials)
   const user = await prisma.user.findUnique({ where: { email: body.email } })
-  if (!user || !(await bcrypt.compare(body.password, user.passwordHash))) {
+  if (!user || !user.active || !(await bcrypt.compare(body.password, user.passwordHash))) {
     throw createError({ statusCode: 401, statusMessage: 'Invalid email or password' })
   }
   const session = await sessionFor(event)

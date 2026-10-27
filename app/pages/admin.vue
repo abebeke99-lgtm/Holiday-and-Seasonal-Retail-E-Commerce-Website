@@ -8,6 +8,8 @@ type Order = { id: string; status: string; total: string; createdAt: string; use
 type Campaign = { id: string; name: string; active: boolean; discountPct: number; startsAt: string; endsAt: string }
 type Collection = { id: string; name: string; slug: string; active: boolean }
 type Audit = { id: string; action: string; entity: string; entityId: string; createdAt: string; actor: { email: string } | null }
+type AdminUser = { id: string; name: string; email: string; role: 'CUSTOMER' | 'STORE_MANAGER' | 'ADMIN'; active: boolean; createdAt: string }
+type UserRole = AdminUser['role']
 type Dashboard = {
   range: { from: string; to: string }
   lowStockThreshold: number
@@ -15,6 +17,7 @@ type Dashboard = {
   metrics: {
     registeredUsers: number
     customers: number
+    storeManagers: number
     activeProducts: number
     categories: number
     activeCollections: number
@@ -33,6 +36,7 @@ type Dashboard = {
 type AdminNavigationItem = { label: string; tab: string; icon: string }
 const adminNavigationGroups: { label: string; items: AdminNavigationItem[] }[] = [
   { label: 'Overview', items: [{ label: 'Dashboard Overview', tab: 'overview', icon: '⌂' }] },
+  { label: 'Users & access', items: [{ label: 'User Management', tab: 'users', icon: '♙' }] },
   { label: 'Catalog', items: [{ label: 'Products', tab: 'products', icon: '▣' }, { label: 'Categories', tab: 'categories', icon: '▦' }, { label: 'Collections', tab: 'collections', icon: '✿' }] },
   { label: 'Promotions', items: [{ label: 'Campaigns', tab: 'campaigns', icon: '✳' }] },
   { label: 'Operations', items: [{ label: 'Inventory', tab: 'inventory', icon: '▤' }, { label: 'Orders', tab: 'orders', icon: '▧' }] },
@@ -50,6 +54,16 @@ const orders = ref<Order[]>([])
 const campaigns = ref<Campaign[]>([])
 const collections = ref<Collection[]>([])
 const auditLogs = ref<Audit[]>([])
+const users = ref<AdminUser[]>([])
+const usersTotal = ref(0)
+const usersPage = ref(1)
+const usersPages = ref(1)
+const usersSearch = ref('')
+const usersRole = ref('')
+const usersActive = ref('')
+const usersSort = ref('createdAt')
+const usersOrder = ref('desc')
+const usersLoading = ref(false)
 const dashboard = ref<Dashboard | null>(null)
 const dashboardFrom = ref('')
 const dashboardTo = ref('')
@@ -67,6 +81,9 @@ const productForm = reactive({ name: '', sku: '', slug: '', description: '', pri
 const categoryForm = reactive({ name: '', slug: '' })
 const collectionForm = reactive({ name: '', slug: '', description: '' })
 const campaignForm = reactive({ name: '', description: '', discountPct: 0, startsAt: '', endsAt: '' })
+const userForm = reactive({ name: '', email: '', password: '', role: 'CUSTOMER' as UserRole })
+const userEdit = reactive({ name: '', email: '', role: 'CUSTOMER' as UserRole, active: true })
+const editingUserId = ref('')
 
 async function loadDashboard() {
   dashboardLoading.value = true
@@ -103,6 +120,32 @@ async function loadDashboard() {
   }
 }
 
+async function loadUsers(page = usersPage.value) {
+  usersLoading.value = true
+  loadError.value = ''
+  try {
+    const data = await ofetch<{ items: AdminUser[]; total: number; page: number; pages: number }>('/api/admin/users', {
+      query: {
+        page,
+        limit: 25,
+        search: usersSearch.value || undefined,
+        role: usersRole.value || undefined,
+        active: usersActive.value || undefined,
+        sort: usersSort.value,
+        order: usersOrder.value
+      }
+    })
+    users.value = data.items
+    usersTotal.value = data.total
+    usersPage.value = data.page
+    usersPages.value = Math.max(1, data.pages)
+  } catch {
+    loadError.value = 'User accounts could not be loaded. Check your administrator access and retry.'
+  } finally {
+    usersLoading.value = false
+  }
+}
+
 async function submit(action: () => Promise<unknown>, success: string) {
   try {
     await action()
@@ -116,6 +159,7 @@ async function submit(action: () => Promise<unknown>, success: string) {
 function selectTab(nextTab: string) {
   tab.value = nextTab
   sidebarOpen.value = false
+  if (nextTab === 'users') void loadUsers(1)
 }
 
 async function logout() {
@@ -164,6 +208,34 @@ async function saveCategoryEdit(id: string) {
     'Category updated.'
   )
   editingCategoryId.value = ''
+}
+
+async function createUser() {
+  await submit(async () => {
+    await ofetch('/api/admin/users', { method: 'POST', body: userForm })
+    Object.assign(userForm, { name: '', email: '', password: '', role: 'CUSTOMER' })
+    await loadUsers(1)
+  }, 'User account created.')
+}
+
+function beginUserEdit(account: AdminUser) {
+  editingUserId.value = account.id
+  Object.assign(userEdit, {
+    name: account.name,
+    email: account.email,
+    role: account.role,
+    active: account.active
+  })
+}
+
+async function saveUserEdit(id: string) {
+  const account = users.value.find(item => item.id === id)
+  if (account?.active && (!userEdit.active || userEdit.role !== account.role) && !window.confirm('This changes account access. Continue?')) return
+  await submit(async () => {
+    await ofetch(`/api/admin/users/${id}`, { method: 'PATCH', body: userEdit })
+    await loadUsers()
+  }, 'User account updated.')
+  editingUserId.value = ''
 }
 
 async function createCampaign() {
@@ -258,7 +330,7 @@ onMounted(async () => {
         <p v-else-if="loadError && !dashboard" class="dashboard-state error-notice" role="alert">Dashboard data is unavailable. No placeholder statistics are shown.</p>
         <template v-else-if="dashboard">
           <div class="metric-grid">
-            <article><span>Registered users</span><strong>{{ dashboard.metrics.registeredUsers }}</strong><small>{{ dashboard.metrics.customers }} customers</small></article>
+            <article><span>Registered users</span><strong>{{ dashboard.metrics.registeredUsers }}</strong><small>{{ dashboard.metrics.customers }} customers · {{ dashboard.metrics.storeManagers }} store managers</small></article>
             <article><span>Active products</span><strong>{{ dashboard.metrics.activeProducts }}</strong><small>{{ dashboard.metrics.categories }} categories</small></article>
             <article><span>Collections</span><strong>{{ dashboard.metrics.activeCollections }}</strong><small>{{ dashboard.metrics.activeCampaigns }} current campaigns</small></article>
             <article><span>Total orders</span><strong>{{ dashboard.metrics.totalOrders }}</strong><small>{{ dashboard.metrics.pendingOrders }} pending</small></article>
@@ -305,6 +377,53 @@ onMounted(async () => {
           </div>
         </template>
       </section>
+      <section v-if="tab === 'users'" class="admin-panel">
+        <div class="panel-title">
+          <div><p class="eyebrow">Accounts and access</p><h2>User Management <small>{{ usersTotal }} accounts</small></h2></div>
+          <button type="button" class="refresh-button" :disabled="usersLoading" @click="loadUsers()">{{ usersLoading ? 'Loading…' : 'Refresh users' }}</button>
+        </div>
+        <form class="admin-form user-form" @submit.prevent="createUser">
+          <input v-model.trim="userForm.name" autocomplete="name" placeholder="Full name" maxlength="120" required />
+          <input v-model.trim="userForm.email" type="email" autocomplete="email" placeholder="Email address" maxlength="254" required />
+          <input v-model="userForm.password" type="password" autocomplete="new-password" placeholder="Initial password (12+ characters)" minlength="12" maxlength="72" required />
+          <select v-model="userForm.role" aria-label="New user's role">
+            <option value="CUSTOMER">Customer</option>
+            <option value="STORE_MANAGER">Store Manager</option>
+            <option value="ADMIN">Administrator</option>
+          </select>
+          <button class="checkout-button" :disabled="usersLoading">Create user</button>
+        </form>
+        <form class="user-filters" @submit.prevent="loadUsers(1)">
+          <label>Search<input v-model.trim="usersSearch" type="search" placeholder="Name or email" /></label>
+          <label>Role<select v-model="usersRole"><option value="">All roles</option><option value="CUSTOMER">Customer</option><option value="STORE_MANAGER">Store Manager</option><option value="ADMIN">Administrator</option></select></label>
+          <label>Status<select v-model="usersActive"><option value="">All statuses</option><option value="true">Active</option><option value="false">Inactive</option></select></label>
+          <label>Sort by<select v-model="usersSort"><option value="createdAt">Created date</option><option value="name">Name</option><option value="email">Email</option><option value="role">Role</option></select></label>
+          <label>Order<select v-model="usersOrder"><option value="desc">Descending</option><option value="asc">Ascending</option></select></label>
+          <button type="submit" class="table-action" :disabled="usersLoading">Apply filters</button>
+        </form>
+        <p v-if="usersLoading && !users.length" class="dashboard-state" role="status">Loading user accounts…</p>
+        <p v-else-if="!usersLoading && !users.length" class="dashboard-state">No users match these filters.</p>
+        <div v-else class="table-wrap">
+          <table>
+            <thead><tr><th>User</th><th>Email</th><th>Role</th><th>Status</th><th>Joined</th><th>Actions</th></tr></thead>
+            <tbody>
+              <tr v-for="account in users" :key="account.id">
+                <td><input v-if="editingUserId === account.id" v-model.trim="userEdit.name" class="edit-input" maxlength="120" /><template v-else>{{ account.name }}</template></td>
+                <td><input v-if="editingUserId === account.id" v-model.trim="userEdit.email" class="edit-input" type="email" maxlength="254" /><template v-else>{{ account.email }}</template></td>
+                <td><select v-if="editingUserId === account.id" v-model="userEdit.role" class="edit-input"><option value="CUSTOMER">Customer</option><option value="STORE_MANAGER">Store Manager</option><option value="ADMIN">Administrator</option></select><template v-else>{{ account.role === 'ADMIN' ? 'Administrator' : account.role === 'STORE_MANAGER' ? 'Store Manager' : 'Customer' }}</template></td>
+                <td><select v-if="editingUserId === account.id" v-model="userEdit.active" class="edit-input"><option :value="true">Active</option><option :value="false">Inactive</option></select><template v-else>{{ account.active ? 'Active' : 'Inactive' }}</template></td>
+                <td>{{ new Date(account.createdAt).toLocaleDateString() }}</td>
+                <td><template v-if="editingUserId === account.id"><button type="button" class="table-action" @click="saveUserEdit(account.id)">Save</button><button type="button" class="table-action" @click="editingUserId = ''">Cancel</button></template><button v-else type="button" class="table-action" @click="beginUserEdit(account)">Edit</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="pagination-controls">
+          <span>Page {{ usersPage }} of {{ usersPages }} · {{ usersTotal }} users</span>
+          <div><button type="button" class="table-action" :disabled="usersPage <= 1 || usersLoading" @click="loadUsers(usersPage - 1)">Previous</button><button type="button" class="table-action" :disabled="usersPage >= usersPages || usersLoading" @click="loadUsers(usersPage + 1)">Next</button></div>
+        </div>
+        <p class="data-caption">Passwords are stored as bcrypt hashes and never returned by these APIs. Deactivating an account revokes access on its next request. The last active administrator cannot be demoted or deactivated.</p>
+      </section>
       <section v-if="tab === 'products'" class="admin-panel">
         <div class="panel-title"><div><p class="eyebrow">Catalog</p><h2>Products <small>{{ products.length }}</small></h2></div></div>
         <form class="admin-form product-form" @submit.prevent="createProduct">
@@ -345,7 +464,7 @@ onMounted(async () => {
         <form class="admin-form campaign-form" @submit.prevent="createCampaign"><input v-model="campaignForm.name" placeholder="Campaign name" required /><input v-model="campaignForm.description" placeholder="Description" /><input v-model.number="campaignForm.discountPct" type="number" min="0" max="100" placeholder="Discount %" required /><label>Starts<input v-model="campaignForm.startsAt" type="datetime-local" required /></label><label>Ends<input v-model="campaignForm.endsAt" type="datetime-local" required /></label><button class="checkout-button">Add campaign</button></form>
         <div class="simple-list"><div v-for="item in campaigns" :key="item.id"><strong>{{ item.name }} · {{ item.discountPct }}%</strong><span>{{ item.active ? 'Active' : 'Inactive' }}</span><button class="table-action" @click="submit(() => ofetch(`/api/admin/campaigns/${item.id}`, { method: 'PATCH', body: { active: !item.active } }), 'Campaign updated.')">{{ item.active ? 'Deactivate' : 'Activate' }}</button></div></div>
       </section>
-      <section v-else class="admin-panel"><div class="panel-title"><div><p class="eyebrow">Administrative history</p><h2>Audit activity</h2></div></div>
+      <section v-else-if="tab === 'activity'" class="admin-panel"><div class="panel-title"><div><p class="eyebrow">Administrative history</p><h2>Audit activity</h2></div></div>
         <div class="simple-list"><div v-for="item in auditLogs" :key="item.id"><strong>{{ item.action }} · {{ item.entity }}</strong><span>{{ item.actor?.email ?? 'System' }} · {{ new Date(item.createdAt).toLocaleString() }}</span></div></div>
       </section>
       </div>
@@ -361,4 +480,15 @@ onMounted(async () => {
 @media(max-width:850px){.admin-layout{grid-template-columns:200px minmax(0,1fr);gap:15px}.metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.dashboard-columns{grid-template-columns:1fr}}
 @media(max-width:640px){.admin-page{padding:12px 12px 45px}.admin-top{flex-wrap:wrap;gap:10px}.top-user{display:none}.admin-layout{display:block;margin-top:12px}.admin-sidebar{position:fixed;z-index:51;top:0;bottom:0;left:0;width:min(290px,82vw);min-height:0;height:100dvh;padding:18px 12px;border-radius:0 10px 10px 0;transform:translateX(-105%);transition:transform .2s ease;overflow:auto}.admin-sidebar.is-open{transform:translateX(0)}.admin-sidebar.is-collapsed{width:min(290px,82vw)}.admin-sidebar.is-collapsed .sidebar-heading{justify-content:space-between}.admin-sidebar.is-collapsed .sidebar-heading>span,.admin-sidebar.is-collapsed .sidebar-label,.admin-sidebar.is-collapsed .sidebar-note,.admin-sidebar.is-collapsed .sidebar-group summary{display:initial}.admin-sidebar.is-collapsed .sidebar-group button{justify-content:flex-start;padding:9px 11px}.sidebar-scrim{position:fixed;z-index:50;inset:0;display:block;background:#14223080}.admin-content .admin-heading{padding:20px 0}.metric-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.metric-grid article{padding:12px;min-height:105px}.dashboard-panel{padding:13px}.dashboard-filters{display:grid;grid-template-columns:1fr 1fr}.dashboard-filters label:nth-child(3){grid-column:span 2}.dashboard-filters button{grid-column:span 2}.panel-title{gap:10px}.panel-title h2{font-size:21px}.admin-heading h1{font-size:29px}.admin-heading .admin-pill{white-space:nowrap}.dashboard-card{padding:13px}}
 @media(max-width:390px){.metric-grid{grid-template-columns:1fr}.dashboard-filters{grid-template-columns:1fr}.dashboard-filters label:nth-child(3),.dashboard-filters button{grid-column:auto}.trend-row{grid-template-columns:43px minmax(25px,1fr) 20px minmax(74px,auto);gap:5px}}
+.user-form{grid-template-columns:repeat(5,minmax(0,1fr));align-items:center}
+.user-filters{display:flex;flex-wrap:wrap;align-items:end;gap:10px;margin-bottom:16px;padding:13px;background:#f6f8fa}
+.user-filters label{display:grid;gap:5px;color:#60758a;font-size:10px}
+.user-filters input,.user-filters select{height:36px;min-width:120px;padding:0 8px;border:1px solid #d9e2eb;border-radius:4px;background:#fff;color:#304d66;font:11px 'DM Sans',sans-serif}
+.user-filters button{height:36px}
+.pagination-controls{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:14px;color:#718396;font-size:10px}
+.pagination-controls>div{display:flex;gap:7px}
+.admin-page button:focus-visible,.admin-page input:focus-visible,.admin-page select:focus-visible{outline:2px solid #3074b3;outline-offset:2px}
+@media(max-width:1100px){.user-form{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:750px){.admin-layout{grid-template-columns:minmax(0,1fr)}.admin-sidebar{position:fixed;z-index:20;inset:0 auto 0 0;width:min(290px,84vw);min-height:100vh;border-radius:0;transform:translateX(-105%);transition:transform .2s}.admin-sidebar.is-open{transform:translateX(0)}.admin-sidebar.is-collapsed{width:min(290px,84vw)}.admin-sidebar.is-collapsed .sidebar-heading>span,.admin-sidebar.is-collapsed .sidebar-label,.admin-sidebar.is-collapsed .sidebar-note,.admin-sidebar.is-collapsed .sidebar-group summary{display:initial}.admin-sidebar.is-collapsed .sidebar-heading{justify-content:space-between}.admin-sidebar.is-collapsed .sidebar-group button{justify-content:flex-start;padding:9px 11px}.sidebar-scrim{position:fixed;z-index:19;inset:0;background:#172b3b66}.admin-top .top-user{display:none}.user-form{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:480px){.user-form,.user-filters{display:grid;grid-template-columns:1fr}.user-filters input,.user-filters select{width:100%}.pagination-controls{align-items:flex-start;flex-direction:column}.admin-heading{padding-right:5px}}
 </style>

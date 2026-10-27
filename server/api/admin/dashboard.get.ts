@@ -35,6 +35,7 @@ export default defineEventHandler(async (event) => {
   const [
     registeredUsers,
     customers,
+    storeManagers,
     activeProducts,
     categories,
     activeCollections,
@@ -51,6 +52,7 @@ export default defineEventHandler(async (event) => {
   ] = await Promise.all([
     prisma.user.count(),
     prisma.user.count({ where: { role: 'CUSTOMER' } }),
+    prisma.user.count({ where: { role: 'STORE_MANAGER' } }),
     prisma.product.count({ where: { active: true } }),
     prisma.category.count(),
     prisma.collection.count({ where: { active: true } }),
@@ -97,6 +99,7 @@ export default defineEventHandler(async (event) => {
     metrics: {
       registeredUsers,
       customers,
+      storeManagers,
       activeProducts,
       categories,
       activeCollections,

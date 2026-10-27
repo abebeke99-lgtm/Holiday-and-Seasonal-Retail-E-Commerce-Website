@@ -82,6 +82,7 @@ Use Node.js 24.15 or later in the Node 24 line (Nuxt's declared engine range), a
 - Relational MySQL schema and initial Prisma migration for accounts, roles, catalog, categories, collections, campaigns, carts, wishlists, orders, inventory, addresses, payments, and audit logs.
 - Password-hashed customer registration, login/logout, database-checked role authorization, and encrypted HTTP-only SameSite session cookies.
 - Searchable/paginated products, category and collection browsing, current campaign display, persistent customer cart/wishlist and order history.
+- Administrator dashboard with live MySQL metrics, responsive navigation, paginated/searchable user management, supported Customer/Store Manager/Administrator roles, account activation controls, bcrypt-hashed account creation, and protection against removing the last active Administrator. The additive `20261027000000_admin_user_management` migration adds the Store Manager role and account status.
 - Provider-neutral checkout: totals are calculated from database decimal prices; stock is atomically decremented within a transaction, movements are recorded, and repeated idempotency keys do not create duplicate orders. The app does not collect card details or claim to charge payment.
 - Admin catalog/category/collection/campaign maintenance, inventory adjustments, orders, and audit log endpoints and dashboard.
 
@@ -89,6 +90,7 @@ Use Node.js 24.15 or later in the Node 24 line (Nuxt's declared engine range), a
 
 - `.env.example` contains placeholders only. `.env`, database dumps, and private keys are ignored.
 - New users are customers. Only an operator with database access or the opt-in seed flow can grant administrator role.
+- User administration is Administrator-only. Store Manager accounts are represented in the role schema and dashboard, but granular Store Manager access to operational APIs is not yet implemented; those APIs remain Administrator-only.
 - This repository began as a minimal Nuxt starter, so it had no existing products, business rules, database records, or MongoDB data to migrate. No sample products or mock runtime data are bundled.
 - Address capture/shipping integration, payment-provider integration, refunds, order status changes, email delivery, and automated MongoDB export/import are not implemented. Checkout creates a pending-payment order only.
 - Apply migrations and test against a dedicated local/test MySQL database. No migration or seed was run against a live database as part of this work.

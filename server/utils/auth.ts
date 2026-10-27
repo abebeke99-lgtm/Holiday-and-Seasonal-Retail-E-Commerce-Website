@@ -26,8 +26,8 @@ export async function requireUser(event: H3Event) {
   if (!userId) {
     throw createError({ statusCode: 401, statusMessage: 'Authentication required' })
   }
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, email: true, name: true, role: true } })
-  if (!user) {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, email: true, name: true, role: true, active: true } })
+  if (!user || !user.active) {
     await session.clear()
     throw createError({ statusCode: 401, statusMessage: 'Authentication required' })
   }

@@ -9,6 +9,7 @@ datasource db {
 
 enum UserRole {
   CUSTOMER
+  STORE_MANAGER
   ADMIN
 }
 
@@ -35,6 +36,7 @@ model User {
   name         String     @db.VarChar(120)
   passwordHash String     @db.VarChar(255)
   role         UserRole   @default(CUSTOMER)
+  active       Boolean    @default(true)
   createdAt    DateTime   @default(now()) @db.DateTime(3)
   updatedAt    DateTime   @updatedAt @db.DateTime(3)
   addresses    Address[]
